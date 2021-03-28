@@ -49,6 +49,15 @@ Resources:
       SecurityGroups:
         - !Ref WebServerSecurityGroup
       KeyName: !Ref KeyName
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            yum update -y
+            yum install -y httpd
+            systemctl start httpd
+            systemctl enable httpd
+            echo "Hello World from $(hostname -f)" > /var/www/html/index.html
   WebServerSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
@@ -65,9 +74,6 @@ Resources:
 Outputs:
   WebsiteURL:
     Description: URL for newly created LAMP stack
-    Value: !Join 
-      - ''
-      - - 'http://'
-        - !GetAtt 
-          - WebServerInstance
-          - PublicDnsName
+    Value: !Sub
+      - 'http://${PublicDNS}/'
+      - PublicDNS: !GetAtt WebServerInstance.PublicDnsName
