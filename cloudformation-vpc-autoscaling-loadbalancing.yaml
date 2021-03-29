@@ -44,30 +44,6 @@ Mappings:
     us-west-2:
       HVM64: ami-0ff60e1968ccfe3d9
 Resources:
-#  WebServerInstance:
-#    Type: 'AWS::EC2::Instance'
-#    Properties:
-#      ImageId: !FindInMap 
-#        - AWSRegionArch2AMI
-#        - !Ref 'AWS::Region'
-#        - !FindInMap 
-#          - AWSInstanceType2Arch
-#          - !Ref InstanceType
-#          - Arch
-#      InstanceType: !Ref InstanceType
-#      SecurityGroups:
-#        - !Ref WebServerSecurityGroup
-#      KeyName: !Ref KeyName
-#      UserData:
-#        Fn::Base64:
-#          !Sub |
-#            #!/bin/bash
-#            yum update -y
-#            yum install -y httpd
-#            systemctl start httpd
-#            systemctl enable httpd
-#            echo "Hello World from $(hostname -f)" > /var/www/html/index.html
-
 # Setup VPC
   CloudFormationVPC:
     Type: 'AWS::EC2::VPC'
@@ -136,12 +112,12 @@ Resources:
       RouteTableId: !Ref PublicRouteTable
       SubnetId: !Ref PublicSubnetB
 # Make Private Subnets Public for UserData setup.
-  PrivateRouteTableAssociationA:
+  TemporaryRouteTableAssociationA:
     Type: 'AWS::EC2::SubnetRouteTableAssociation'
     Properties:
       RouteTableId: !Ref PublicRouteTable
       SubnetId: !Ref PrivateSubnetA
-  PrivateRouteTableAssociationB:
+  TemporaryRouteTableAssociationB:
     Type: 'AWS::EC2::SubnetRouteTableAssociation'
     Properties:
       RouteTableId: !Ref PublicRouteTable
