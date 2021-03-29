@@ -1,9 +1,8 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: >-
-  AWS CloudFormation Test Template: Creates a web server using a t4g micro instance. 
-  **WARNING** This template creates an Amazon
-  EC2 instance. You will be billed for the AWS resources used if you create a
-  stack from this template.
+  AWS CloudFormation Test Template: Creates an AutoScalingGroup with a Load Balancer
+  **WARNING** This template creates an Amazon EC2 instance.
+  You will be billed for the AWS resources used if you create a stack from this template.
 Parameters:
   KeyName:
     Description: Name of an existing EC2 KeyPair to enable SSH access to the instance
@@ -35,30 +34,51 @@ Mappings:
     us-west-2:
       HVM64: ami-0ff60e1968ccfe3d9
 Resources:
-  WebServerInstance:
-    Type: 'AWS::EC2::Instance'
-    Properties:
-      ImageId: !FindInMap 
-        - AWSRegionArch2AMI
-        - !Ref 'AWS::Region'
-        - !FindInMap 
-          - AWSInstanceType2Arch
-          - !Ref InstanceType
-          - Arch
-      InstanceType: !Ref InstanceType
-      SecurityGroups:
-        - !Ref WebServerSecurityGroup
-      KeyName: !Ref KeyName
-      UserData:
-        Fn::Base64:
-          !Sub |
-            #!/bin/bash
-            yum update -y
-            yum install -y httpd
-            systemctl start httpd
-            systemctl enable httpd
-            echo "Hello World from $(hostname -f)" > /var/www/html/index.html
-  WebServerSecurityGroup:
+#  WebServerInstance:
+#    Type: 'AWS::EC2::Instance'
+#    Properties:
+#      ImageId: !FindInMap 
+#        - AWSRegionArch2AMI
+#        - !Ref 'AWS::Region'
+#        - !FindInMap 
+#          - AWSInstanceType2Arch
+#          - !Ref InstanceType
+#          - Arch
+#      InstanceType: !Ref InstanceType
+#      SecurityGroups:
+#        - !Ref WebServerSecurityGroup
+#      KeyName: !Ref KeyName
+#      UserData:
+#        Fn::Base64:
+#          !Sub |
+#            #!/bin/bash
+#            yum update -y
+#            yum install -y httpd
+#            systemctl start httpd
+#            systemctl enable httpd
+#            echo "Hello World from $(hostname -f)" > /var/www/html/index.html
+  CloudFormationVPC:
+    Type: 'AWS::EC2::VPC'
+    Properties: 
+      CidrBlock: 10.0.8.0/22
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+  InternetGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties: 
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref CloudFormationVPC
+  VPCRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties: 
+      VpcId: !Ref CloudFormationVPC
+  InternetGatewayRoute:
+    Type: 'AWS::EC2::Route'
+    Properties: 
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref VPCRouteTable
+  LoadBalancerSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
       GroupDescription: Enable HTTP access via port 80
@@ -67,13 +87,98 @@ Resources:
           FromPort: '80'
           ToPort: '80'
           CidrIp: 0.0.0.0/0
+      VpcId: !Ref CloudFormationVPC
+  WebServerSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Enable HTTP from LoadBalancer
+      SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: '22'
-          ToPort: '22'
-          CidrIp: !Ref SSHLocation
+          FromPort: '80'
+          ToPort: '80'
+          SourceSecurityGroupId: !GetAtt LoadBalancerSecurityGroup.GroupId
+      VpcId: !Ref CloudFormationVPC
+  WebServerSubnetA:
+    Type: 'AWS::EC2::Subnet'
+    Properties: 
+      AvailabilityZone: "us-west-2a"
+      CidrBlock: 10.0.8.0/24
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref CloudFormationVPC
+  WebServerSubnetB:
+    Type: 'AWS::EC2::Subnet'
+    Properties: 
+      AvailabilityZone: "us-west-2b"
+      CidrBlock: 10.0.9.0/24
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref CloudFormationVPC
+  InstanceLaunchTemplate:
+    Type: 'AWS::EC2::LaunchTemplate'
+    Properties:
+      LaunchTemplateName: !Sub '${AWS::StackName}-launch-template-for-auto-scaling'
+      LaunchTemplateData:
+        ImageId: ami-0ff60e1968ccfe3d9
+        InstanceType: t4g.micro
+        KeyName: enx_rsa
+        SecurityGroupIds: 
+          - !GetAtt WebServerSecurityGroup.GroupId
+        UserData:
+          Fn::Base64:
+            !Sub |
+              #!/bin/bash
+              yum update -y
+              yum install -y httpd
+              systemctl start httpd
+              systemctl enable httpd
+              echo "Hello World from $(hostname -f)" > /var/www/html/index.html
+  LoadBalancer: 
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Properties: 
+      Name: !Sub '${AWS::StackName}-loadbalancer'
+      SecurityGroups: 
+        - !Ref LoadBalancerSecurityGroup
+      Subnets: 
+        - !Ref WebServerSubnetA
+        - !Ref WebServerSubnetB
+  LoadBalancerTargetGroup:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Properties: 
+      HealthCheckPort: 80
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 10
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 5
+      Port: 80
+      Protocol: HTTP
+      TargetType: instance
+      VpcId: !Ref CloudFormationVPC
+  LoadBalancerListener:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties: 
+      DefaultActions: 
+        - Type: forward
+          TargetGroupArn: !Ref LoadBalancerTargetGroup
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+  AutoScalingGroup:
+    Type: 'AWS::AutoScaling::AutoScalingGroup'
+    Properties: 
+      LaunchTemplate: 
+        LaunchTemplateId: !Ref InstanceLaunchTemplate
+        Version: !GetAtt InstanceLaunchTemplate.LatestVersionNumber
+      DesiredCapacity: 1
+      MaxSize: 2
+      MinSize: 1
+      TargetGroupARNs: 
+        - !Ref LoadBalancerTargetGroup
+      VPCZoneIdentifier: 
+        - !Ref WebServerSubnetA
+        - !Ref WebServerSubnetB
 Outputs:
   WebsiteURL:
-    Description: URL for newly created LAMP stack
+    Description: URL for newly created LoadBalancer
     Value: !Sub
       - 'http://${PublicDNS}/'
-      - PublicDNS: !GetAtt WebServerInstance.PublicDnsName
+      - PublicDNS: !GetAtt LoadBalancer.DNSName 
