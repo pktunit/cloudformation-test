@@ -16,6 +16,16 @@ Parameters:
       - t4g.nano
       - t4g.micro
     ConstraintDescription: must be a valid EC2 instance type.
+  Region:
+    Description: Region to use
+    Type: String
+    Default: us-west-2
+    AllowedValues:
+      - us-east-1 
+      - us-east-2
+      - us-west-1 
+      - us-west-2
+    ConstraintDescription: Must be valid AWS Region.
   SSHLocation:
     Description: The IP address range that can be used to SSH to the EC2 instances
     Type: String
@@ -57,10 +67,43 @@ Resources:
 #            systemctl start httpd
 #            systemctl enable httpd
 #            echo "Hello World from $(hostname -f)" > /var/www/html/index.html
+
+# Setup VPC
   CloudFormationVPC:
     Type: 'AWS::EC2::VPC'
     Properties: 
       CidrBlock: 10.0.8.0/22
+# Setup Public and Private for us-west-2a
+  PublicSubnetA:
+    Type: 'AWS::EC2::Subnet'
+    Properties: 
+      AvailabilityZone: !Sub '${Region}a'
+      CidrBlock: 10.0.8.0/24
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref CloudFormationVPC
+  PrivateSubnetA:
+    Type: 'AWS::EC2::Subnet'
+    Properties: 
+      AvailabilityZone: !Sub '${Region}a'
+      CidrBlock: 10.0.9.0/24
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref CloudFormationVPC
+# Setup Public and Private for us-west-2b
+  PublicSubnetB:
+    Type: 'AWS::EC2::Subnet'
+    Properties: 
+      AvailabilityZone: !Sub '${Region}b'
+      CidrBlock: 10.0.10.0/24
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref CloudFormationVPC
+  PrivateSubnetB:
+    Type: 'AWS::EC2::Subnet'
+    Properties: 
+      AvailabilityZone: !Sub '${Region}b'
+      CidrBlock: 10.0.10.0/24
+      CidrBlock: 10.0.11.0/24
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref CloudFormationVPC
   InternetGateway:
     Type: 'AWS::EC2::InternetGateway'
   InternetGatewayAttachment:
@@ -68,7 +111,11 @@ Resources:
     Properties: 
       InternetGatewayId: !Ref InternetGateway
       VpcId: !Ref CloudFormationVPC
-  VPCRouteTable:
+  PublicRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties: 
+      VpcId: !Ref CloudFormationVPC
+  PrivateRouteTable:
     Type: 'AWS::EC2::RouteTable'
     Properties: 
       VpcId: !Ref CloudFormationVPC
@@ -77,7 +124,28 @@ Resources:
     Properties: 
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
-      RouteTableId: !Ref VPCRouteTable
+      RouteTableId: !Ref PublicRouteTable
+  PublicRouteTableAssociationA:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetA
+  PublicRouteTableAssociationB:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetB
+# Make Private Subnets Public for UserData setup.
+  PrivateRouteTableAssociationA:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PrivateSubnetA
+  PrivateRouteTableAssociationB:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PrivateSubnetB
   LoadBalancerSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
@@ -97,20 +165,6 @@ Resources:
           FromPort: '80'
           ToPort: '80'
           SourceSecurityGroupId: !GetAtt LoadBalancerSecurityGroup.GroupId
-      VpcId: !Ref CloudFormationVPC
-  WebServerSubnetA:
-    Type: 'AWS::EC2::Subnet'
-    Properties: 
-      AvailabilityZone: "us-west-2a"
-      CidrBlock: 10.0.8.0/24
-      MapPublicIpOnLaunch: true
-      VpcId: !Ref CloudFormationVPC
-  WebServerSubnetB:
-    Type: 'AWS::EC2::Subnet'
-    Properties: 
-      AvailabilityZone: "us-west-2b"
-      CidrBlock: 10.0.9.0/24
-      MapPublicIpOnLaunch: true
       VpcId: !Ref CloudFormationVPC
   InstanceLaunchTemplate:
     Type: 'AWS::EC2::LaunchTemplate'
@@ -138,8 +192,8 @@ Resources:
       SecurityGroups: 
         - !Ref LoadBalancerSecurityGroup
       Subnets: 
-        - !Ref WebServerSubnetA
-        - !Ref WebServerSubnetB
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetB
   LoadBalancerTargetGroup:
     Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
     Properties: 
@@ -174,8 +228,8 @@ Resources:
       TargetGroupARNs: 
         - !Ref LoadBalancerTargetGroup
       VPCZoneIdentifier: 
-        - !Ref WebServerSubnetA
-        - !Ref WebServerSubnetB
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
 Outputs:
   WebsiteURL:
     Description: URL for newly created LoadBalancer
