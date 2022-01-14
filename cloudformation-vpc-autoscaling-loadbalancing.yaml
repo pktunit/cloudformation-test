@@ -149,7 +149,6 @@ Resources:
       LaunchTemplateData:
         ImageId: ami-0ff60e1968ccfe3d9
         InstanceType: t4g.micro
-        KeyName: enx_rsa
         SecurityGroupIds: 
           - !GetAtt WebServerSecurityGroup.GroupId
         UserData:
@@ -198,9 +197,9 @@ Resources:
       LaunchTemplate: 
         LaunchTemplateId: !Ref InstanceLaunchTemplate
         Version: !GetAtt InstanceLaunchTemplate.LatestVersionNumber
-      DesiredCapacity: 1
-      MaxSize: 2
-      MinSize: 1
+      DesiredCapacity: 2
+      MaxSize: 4
+      MinSize: 2
       TargetGroupARNs: 
         - !Ref LoadBalancerTargetGroup
       VPCZoneIdentifier: 
