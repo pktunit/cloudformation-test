@@ -148,7 +148,8 @@ Resources:
       LaunchTemplateName: !Sub '${AWS::StackName}-launch-template-for-auto-scaling'
       LaunchTemplateData:
         ImageId: ami-0ff60e1968ccfe3d9
-        InstanceType: t4g.micro
+        InstanceType: t4g.nano
+        KeyName: !Ref: KeyName
         SecurityGroupIds: 
           - !GetAtt WebServerSecurityGroup.GroupId
         UserData:
