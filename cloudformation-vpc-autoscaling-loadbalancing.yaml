@@ -11,7 +11,7 @@ Parameters:
   InstanceType:
     Description: WebServer EC2 instance type
     Type: String
-    Default: t4g.micro
+    Default: t4g.nano
     AllowedValues:
       - t4g.nano
       - t4g.micro
