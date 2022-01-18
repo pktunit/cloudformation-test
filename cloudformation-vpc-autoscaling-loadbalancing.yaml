@@ -149,7 +149,7 @@ Resources:
       LaunchTemplateData:
         ImageId: ami-0ff60e1968ccfe3d9
         InstanceType: t4g.nano
-        KeyName: !Ref: KeyName
+        KeyName: !Ref KeyName
         SecurityGroupIds: 
           - !GetAtt WebServerSecurityGroup.GroupId
         UserData:
